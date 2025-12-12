@@ -61,8 +61,13 @@ ImageListFilter: TypeAlias = Union[
 
 class Image(ReloadableObjectFromJson):
     def __init__(
-        self, client_config: ClientConfig, reference: str, is_immutable_id=False
+        self,
+        client_config: ClientConfig,
+        reference: str,
+        platform: Optional[str] = None,
+        is_immutable_id=False,
     ):
+        self._platform = platform
         super().__init__(client_config, "id", reference, is_immutable_id)
 
     def __enter__(self):
@@ -72,7 +77,12 @@ class Image(ReloadableObjectFromJson):
         self.remove(force=True)
 
     def _fetch_inspect_result_json(self, reference):
-        json_str = run(self.docker_cmd + ["image", "inspect", reference])
+        args = ["image", "inspect"]
+        if self._platform is not None:
+            args.append(f"--platform={self._platform}")
+        args.append(reference)
+
+        json_str = run(self.docker_cmd + args)
         return json.loads(json_str)[0]
 
     def _parse_json_object(self, json_object: Mapping[str, Any]) -> ImageInspectResult:
@@ -358,13 +368,21 @@ class ImageCLI(DockerCLICaller):
         return Image(self.client_config, run(full_cmd))
 
     @overload
-    def inspect(self, x: str) -> Image: ...
+    def inspect(self, x: str, platform: Optional[str] = None) -> Image: ...
 
     @overload
-    def inspect(self, x: Iterable[str]) -> List[Image]: ...
+    def inspect(
+        self, x: Iterable[str], platform: Optional[str] = None
+    ) -> List[Image]: ...
 
-    def inspect(self, x: Union[str, Iterable[str]]) -> Union[Image, List[Image]]:
+    def inspect(
+        self, x: Union[str, Iterable[str]], platform: Optional[str] = None
+    ) -> Union[Image, List[Image]]:
         """Creates a `python_on_whales.Image` object.
+
+        Parameters:
+            x: Image name(s) or id(s). Can be a string or an iterable of strings.
+            platform: If you want to query a specific platform variant of the image.
 
         # Returns
             `python_on_whales.Image`, or `List[python_on_whales.Image]` if the input
@@ -375,11 +393,14 @@ class ImageCLI(DockerCLICaller):
 
         """
         if isinstance(x, str):
-            return Image(self.client_config, x)
+            return Image(self.client_config, x, platform=platform)
         else:
-            return [Image(self.client_config, identifier) for identifier in x]
+            return [
+                Image(self.client_config, identifier, platform=platform)
+                for identifier in x
+            ]
 
-    def exists(self, x: str) -> bool:
+    def exists(self, x: str, platform: Optional[str] = None) -> bool:
         """Returns `True` if the image exists. `False` otherwise.
 
          It's just calling `docker.image.inspect(...)` and verifies that it doesn't throw
@@ -389,7 +410,7 @@ class ImageCLI(DockerCLICaller):
             A `bool`
         """
         try:
-            self.inspect(x)
+            self.inspect(x, platform=platform)
         except NoSuchImage:
             return False
         else:

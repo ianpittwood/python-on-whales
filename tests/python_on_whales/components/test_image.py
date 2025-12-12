@@ -399,6 +399,56 @@ def test_no_such_image_inspect(ctr_client: DockerClient):
     ["docker", pytest.param("podman", marks=pytest.mark.xfail)],
     indirect=True,
 )
+def test_image_inspect_platform(ctr_client: DockerClient):
+    image_name = "busybox"
+    image_platform = "linux/amd64"
+    ctr_client.image.pull(image_name, platform=image_platform)
+    inspect_result = ctr_client.image.inspect(image_name, platform=image_platform)
+    assert inspect_result.architecture == "amd64"
+    assert "busybox:latest" in inspect_result.repo_tags
+
+
+@pytest.mark.parametrize(
+    "ctr_client",
+    ["docker", pytest.param("podman", marks=pytest.mark.xfail)],
+    indirect=True,
+)
+def test_multi_image_inspect_platform(ctr_client: DockerClient):
+    image_names = ["busybox", "hello-world"]
+    image_platform = "linux/amd64"
+    ctr_client.image.pull(image_names, platform=image_platform)
+    inspect_result = ctr_client.image.inspect(image_names, platform=image_platform)
+    assert len(inspect_result) == 2
+    assert inspect_result[0].architecture == "amd64"
+    assert inspect_result[1].architecture == "amd64"
+    assert "busybox:latest" in inspect_result[0].repo_tags
+    assert "hello-world:latest" in inspect_result[1].repo_tags
+
+
+@pytest.mark.parametrize(
+    "ctr_client",
+    ["docker", pytest.param("podman", marks=pytest.mark.xfail)],
+    indirect=True,
+)
+def test_no_such_image_inspect_platform(ctr_client: DockerClient):
+    image_name = "busybox"
+    image_platform = "linux/amd64"
+    image_platform_that_does_not_exist = "linux/badarch"
+    ctr_client.image.pull(image_name, platform=image_platform)
+    assert "busybox" in repr(ctr_client.image.list())
+    with pytest.raises(NoSuchImage) as err:
+        ctr_client.image.inspect(
+            image_name, platform=image_platform_that_does_not_exist
+        )
+
+    assert f"No such image: {image_name}" in str(err.value)
+
+
+@pytest.mark.parametrize(
+    "ctr_client",
+    ["docker", pytest.param("podman", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 def test_no_such_image_remove(ctr_client: DockerClient):
     image_name_that_does_not_exists = "dueizhguizhfezaezagrthyh"
     with pytest.raises(NoSuchImage) as err:
@@ -480,6 +530,21 @@ def test_exists(ctr_client: DockerClient):
     assert ctr_client.image.exists("busybox")
 
     assert not ctr_client.image.exists("dudurghurozgiozpfezjigfoeioengizeonig")
+
+
+@pytest.mark.parametrize(
+    "ctr_client",
+    ["docker", pytest.param("podman", marks=pytest.mark.xfail)],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "platform", ["linux/amd64", "linux/386", "linux/arm64", "linux/riscv64"]
+)
+def test_exists_platform(ctr_client: DockerClient, platform):
+    my_image = ctr_client.pull("busybox", platform=platform)
+    assert my_image.exists()
+    assert ctr_client.image.exists("busybox", platform=platform)
+    assert not ctr_client.image.exists("busybox", platform="linux/badarch")
 
 
 @patch("python_on_whales.components.image.cli_wrapper.ContainerCLI")
